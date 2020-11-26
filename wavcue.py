@@ -38,6 +38,10 @@ with io.open(file, 'rb') as f:
 		print("Format: %i, Channels %i, Sample Rate: %i, Kbps: %i, BytesPerSec: %i" % (aformat, channels, samplerate, bitrate, byterate))
 		sample_size = int(channels * bps / 8)
 		print("Sample size: %s" % (sample_size))
+		if aformat == 65534: # WaveFormatExtensible
+			# Then we have extension size and extra fields
+			extension_size, valid_bits_per_sample, channel_mask, sub_fmt_guid = struct.unpack('<HHI16s', f.read(24))
+			print("Extention Size: %i, Valid Bps: %i, ChannelMask: %i, GUID: %s" % (extension_size, valid_bits_per_sample, channel_mask, sub_fmt_guid))
 		chunk_offset = f.tell()
 		while chunk_offset < size:
 			f.seek(chunk_offset)
@@ -107,8 +111,14 @@ print("\nCUE Data")
 for cue_id, cue_data in cue_dict.items():
 	if not 'time_end' in cue_data:
 		cue_data['time_end'] = ''
-	cue_data['time_end'] = convert_to_hms( (cue_data['sample_start'] + cue_data['sample_len']) * sample_size  / byterate )
-	cue_data['duration'] = convert_to_hms( cue_data['sample_len'] * sample_size / byterate )
+	if 'sample_len' in cue_data:
+		cue_data['time_end'] = convert_to_hms( (cue_data['sample_start'] + cue_data['sample_len']) * sample_size  / byterate )
+		cue_data['duration'] = convert_to_hms( cue_data['sample_len'] * sample_size / byterate )
+	else: 
+		#This means the file does not have any 'ltxt' chunks indiciating sample len for these cue ids, 
+		#as such these indicate redundant or useless cues 
+		cue_data['time_end'] = ''
+		cue_data['duration'] = ''
 	if 'label' in cue_data:
 		print("CueID: %3s | Label: %15s | Pos: %10s | SStart: %10s | TimeStart: %12s | TimeEnd: %12s | Duraton: %12s" % (cue_id, cue_data['label'], 
 			cue_data['position'], cue_data['sample_start'], cue_data['time_start'], cue_data['time_end'], cue_data['duration']) )
