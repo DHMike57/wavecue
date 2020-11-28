@@ -4,6 +4,16 @@ import sys
 import os
 import struct
 import io
+import getopt
+
+
+def usage():
+    data = ("Usage: "+sys.argv[0]+" -i <filename> \n"
+    	"-i | --filename\tFilename to read\n"
+        "-d | --delimiter\tSet delimiter\n"
+        "-c | --cue-only\tPrint only cue data without other metadata\n")
+    print(data)
+    sys.exit(1)
 
 def convert_to_hms( s ):
 	seconds = s
@@ -16,45 +26,75 @@ def convert_to_hms( s ):
 	return duration
 
 if len(sys.argv) <= 1:
-	print("Usage: python3 %s <filename>" % (sys.argv[0]))
+	usage()
 	sys.exit(1)
 
-file = sys.argv[1]
+#file = sys.argv[1]
+
+try:
+    options, remainder = getopt.gnu_getopt(sys.argv[1:], 'd:i:c', [ 'delimiter=', 'filename=', 'cue-only' ])
+except getopt.GetoptError as e:
+    print( e )
+    sys.exit(2)
+
+delimiter = " | "
+CUEONLY = False
+file = None
+for opt, arg in options:
+	if opt in ('-d', '--delimiter'):
+		delimiter = arg
+	elif opt in ('-i', '--filename'):
+		file = arg
+	elif opt in ('-c', '--cue-only'):
+		CUEONLY = True
+
+if not file:
+	usage()
+
+#print("%s - %s" % (file, delimiter))
 if not os.path.exists(file):
-	print("File does not exist!")
+	print("File %s does not exist!" % file)
 	sys.exit(1)
 
 cue_dict = {}
 with io.open(file, 'rb') as f:
 	riff, size, fformat = struct.unpack('<4sI4s', f.read(12))
-	print("Riff: %s, Chunk Size: %i, format: %s" % (riff, size, fformat))
+	if not CUEONLY:
+		print("Riff: %s, Chunk Size: %i, format: %s" % (riff, size, fformat))
 
 	chunk_header = f.read(8)
 	subchunk_id, subchunk_size = struct.unpack('<4sI', chunk_header)
-	print(subchunk_id)
+	if not CUEONLY:
+		print(subchunk_id)
 	if subchunk_id == b'fmt ':
 		aformat, channels, samplerate, byterate, blockalign, bps = struct.unpack('HHIIHH', f.read(16))
 		bitrate = (samplerate * channels * bps) / 1024
-		print("Format: %i, Channels %i, Sample Rate: %i, Kbps: %i, BytesPerSec: %i" % (aformat, channels, samplerate, bitrate, byterate))
+		if not CUEONLY:
+			print("Format: %i, Channels %i, Sample Rate: %i, Kbps: %i, BytesPerSec: %i" % (aformat, channels, samplerate, bitrate, byterate))
 		sample_size = int(channels * bps / 8)
-		print("Sample size: %s" % (sample_size))
+		if not CUEONLY:
+			print("Sample size: %s" % (sample_size))
 		if aformat == 65534: # WaveFormatExtensible
 			# Then we have extension size and extra fields
 			extension_size, valid_bits_per_sample, channel_mask, sub_fmt_guid = struct.unpack('<HHI16s', f.read(24))
-			print("Extention Size: %i, Valid Bps: %i, ChannelMask: %i, GUID: %s" % (extension_size, valid_bits_per_sample, channel_mask, sub_fmt_guid))
+			if not CUEONLY:
+				print("Extention Size: %i, Valid Bps: %i, ChannelMask: %i, GUID: %s" % (extension_size, valid_bits_per_sample, channel_mask, sub_fmt_guid))
 		chunk_offset = f.tell()
 		while chunk_offset < size:
 			f.seek(chunk_offset)
 			subchunk2_id, subchunk2_size = struct.unpack('<4sI', f.read(8))
-			print("Chunk: %s, size: %i" % (subchunk2_id.decode(), subchunk2_size))
+			if not CUEONLY:
+				print("Chunk: %s, size: %i" % (subchunk2_id.decode(), subchunk2_size))
 			if subchunk2_id.decode() == 'data':
 				duration = convert_to_hms( subchunk2_size / byterate )
 				total_samples = int ((subchunk2_size * 8) / (channels * bps))
-				print("Total duration: %s" % duration)
-				print("Total samples: %s" % (total_samples))
+				if not CUEONLY:
+					print("Total duration: %s" % duration)
+					print("Total samples: %s" % (total_samples))
 			elif subchunk2_id == b'LIST':
 				listtype = struct.unpack('<4s', f.read(4))[0]
-				print("\tList Type: %s, List Size: %i" % (listtype.decode(), subchunk2_size))
+				if not CUEONLY:
+					print("\tList Type: %s, List Size: %i" % (listtype.decode(), subchunk2_size))
 
 				list_offset = 0
 				do_print = True
@@ -84,11 +124,13 @@ with io.open(file, 'rb') as f:
 						cue_dict[cue_id]['label'] = cue_label
 
 					if list_offset <= (subchunk2_size -8) and do_print:
-						print("\t\tID: %s, size: %i, offset: %s, data: %s" % (item_id.decode('ascii'), item_size, list_offset, data))
+						if not CUEONLY:
+							print("\t\tID: %s, size: %i, offset: %s, data: %s" % (item_id.decode('ascii'), item_size, list_offset, data))
 
 			elif subchunk2_id == b'cue ':
 				total_cues = struct.unpack('<I', f.read(4))
-				print("\tTotal cues: %s" % (total_cues))
+				if not CUEONLY:
+					print("\tTotal cues: %s" % (total_cues))
 				# Each cue is 24 bytes of data
 				for i in range(total_cues[0]):
 					cue_id, cue_pos, cue_chunk_id, cue_chunk_start, cue_block_start, cue_sample_start = struct.unpack('<II4sIII', f.read(24))
@@ -107,7 +149,8 @@ with io.open(file, 'rb') as f:
 
 			chunk_offset = chunk_offset + subchunk2_size + 8
 
-print("\nCUE Data")
+if not CUEONLY:
+	print("\nCUE Data")
 for cue_id, cue_data in cue_dict.items():
 	if not 'time_end' in cue_data:
 		cue_data['time_end'] = ''
@@ -120,9 +163,10 @@ for cue_id, cue_data in cue_dict.items():
 		cue_data['time_end'] = ''
 		cue_data['duration'] = ''
 	if 'label' in cue_data:
-		print("CueID: %3s | Label: %15s | Pos: %10s | SStart: %10s | TimeStart: %12s | TimeEnd: %12s | Duraton: %12s" % (cue_id, cue_data['label'], 
-			cue_data['position'], cue_data['sample_start'], cue_data['time_start'], cue_data['time_end'], cue_data['duration']) )
+		print("CueID: %3s" % cue_id, "Label: %15s" % cue_data['label'], "Pos: %10s" % cue_data['position'] , "SStart: %10s" % cue_data['sample_start'] ,
+			 "TimeStart: %12s" % cue_data['time_start'] , "TimeEnd: %12s" % cue_data['time_end'] , "Duration: %12s" % cue_data['duration'], sep=delimiter )
 	else:
-		print("CueID: %3s | Label: %15s | Pos: %10s | SStart: %10s | TimeStart: %12s | TimeEnd: %12s | Duraton: %12s" % (cue_id, '', cue_data['position'], 
-			cue_data['sample_start'], cue_data['time_start'], cue_data['time_end'], cue_data['duration']) )
+		print("CueID: %3s" % cue_id, "Label: %15s" % '', "Pos: %10s" % cue_data['position'] , "SStart: %10s" % cue_data['sample_start'] ,
+			 "TimeStart: %12s" % cue_data['time_start'] , "TimeEnd: %12s" % cue_data['time_end'] , "Duration: %12s" % cue_data['duration'], sep=delimiter )
+
 
