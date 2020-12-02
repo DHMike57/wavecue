@@ -79,6 +79,10 @@ with io.open(file, 'rb') as f:
 			extension_size, valid_bits_per_sample, channel_mask, sub_fmt_guid = struct.unpack('<HHI16s', f.read(24))
 			if not CUEONLY:
 				print("Extention Size: %i, Valid Bps: %i, ChannelMask: %i, GUID: %s" % (extension_size, valid_bits_per_sample, channel_mask, sub_fmt_guid))
+		elif aformat == 3:
+			extension_size = struct.unpack('<H',f.read(2))
+			print("Ext size: %d" % extension_size)
+			f.read(extension_size[0])
 		chunk_offset = f.tell()
 		while chunk_offset < size:
 			f.seek(chunk_offset)
