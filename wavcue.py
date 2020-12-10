@@ -74,6 +74,7 @@ with io.open(file, 'rb') as f:
 		sample_size = int(channels * bps / 8)
 		if not CUEONLY:
 			print("Sample size: %s" % (sample_size))
+		hack_offset = 0
 		if aformat == 65534: # WaveFormatExtensible
 			# Then we have extension size and extra fields
 			extension_size, valid_bits_per_sample, channel_mask, sub_fmt_guid = struct.unpack('<HHI16s', f.read(24))
@@ -83,8 +84,15 @@ with io.open(file, 'rb') as f:
 			extension_size = struct.unpack('<H',f.read(2))
 			if not CUEONLY:
 				print("Extension size: %d" % extension_size)
-			f.read(extension_size[0])
-		chunk_offset = f.tell()
+			# this is a hack. Some probably very old wav with floating point PCM data may not have a extension size header
+			# As per documentation, this is mandatory for all format codes other than 1 but in some some cases
+			# this does not seem to exist, so this hack basically checks if the extension size is greater than 22 (which seem to be the max valid value )
+			# then it assumes that this header is not present and shifts back the offset as if the extension header is not present
+			if extension_size[0] > 22:
+				hack_offset = 2
+			else:
+				f.read(extension_size[0])
+		chunk_offset = f.tell() - hack_offset
 		while chunk_offset < size:
 			f.seek(chunk_offset)
 			subchunk2_id, subchunk2_size = struct.unpack('<4sI', f.read(8))
