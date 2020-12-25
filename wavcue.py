@@ -112,8 +112,13 @@ with io.open(file, 'rb') as f:
 				list_offset = 0
 				do_print = True
 				while (subchunk2_size - 8) >= list_offset:
+					#print("Subchunk size: %s, list_offset: %s" % (subchunk2_size, list_offset))
 					item_id, item_size = struct.unpack('<4sI', f.read(8))
+					#print("Item size: %s" % (item_size))
+					if item_size % 2 == 1:
+						item_size += 1
 					list_offset = list_offset + item_size + 8
+
 					listdata = f.read(item_size)
 					try:
 						data = listdata.decode().rstrip('\0')
@@ -131,6 +136,7 @@ with io.open(file, 'rb') as f:
 						do_print = False
 						cue_id, cue_label = struct.unpack('<I%ss' % (item_size - 4), listdata)
 						cue_label = cue_label.decode().rstrip('\0')
+						#print(cue_label)
 						data = "CueID: %s, Cue Label: %s" % (cue_id, cue_label)
 						if not cue_id in cue_dict:
 							cue_dict[cue_id] = {}
